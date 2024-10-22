@@ -1,3 +1,3 @@
 # groomy-lime
 
-# pip install bcrypt
+pip install bcrypt
