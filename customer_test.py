@@ -1,5 +1,3 @@
-# customer_test.py
-
 import unittest
 from customer import Customer
 

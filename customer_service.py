@@ -6,8 +6,9 @@ class CustomerService:
         if conn:
             self.conn = conn
         else:
-            self.conn = sqlite3.connect('customers.db')
+            self.conn = sqlite3.connect('app.db')
         self.conn.row_factory = sqlite3.Row  # return dictionary
+        self.conn.execute('PRAGMA foreign_keys = ON')
         self.setup_database()
 
     def setup_database(self):
