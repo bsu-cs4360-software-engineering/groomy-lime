@@ -7,7 +7,7 @@ class TestUserManager(unittest.TestCase):
     def setUp(self):
         # creates in memory database for SQLite
         self.conn = sqlite3.connect(':memory:')
-        self.user_manager = UserManager(self.conn)
+        self.user_manager = UserManager(conn=self.conn)
         self.user_manager.setup_database()
 
     def test_hash_password(self):
@@ -17,8 +17,7 @@ class TestUserManager(unittest.TestCase):
 
     def test_create_user(self):
         self.user_manager.create_user('shrimp', 'fishy', 'crab@lobster.com', 'turkey')
-        conn = sqlite3.connect(':memory:')
-        cursor = conn.cursor()
+        cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM users WHERE email = ?', ('crab@lobster.com',))
         user = cursor.fetchone()
         self.assertIsNotNone(user)
