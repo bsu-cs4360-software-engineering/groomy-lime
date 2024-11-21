@@ -647,8 +647,23 @@ def view_appointment(appointment):
     details_frame = tk.Frame(main_frame, bg="#FFFFFF")
     details_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-    # appointment details
-    fields = [
+    # Configure grid columns in details_frame
+    details_frame.columnconfigure(0, weight=1, uniform='column')
+    details_frame.columnconfigure(1, weight=1, uniform='column')
+
+    # Appointment details frame
+    appointment_frame = tk.Frame(details_frame, bg="#FFFFFF")
+    appointment_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 10))
+
+    # Customer details frame
+    customer_frame = tk.Frame(details_frame, bg="#FFFFFF")
+    customer_frame.grid(row=0, column=1, sticky='nsew', padx=(10, 0))
+
+    # Appointment details
+    tk.Label(appointment_frame, text="Appointment Details", fg='black', bg='#fefefe',
+             font=('Arial', 18, 'bold')).pack(anchor="w", pady=(0, 10))
+
+    appointment_fields = [
         ('Title', appointment.title),
         ('Description', appointment.description),
         ('Start Time', appointment.start_time.strftime('%Y-%m-%d %H:%M:%S')),
@@ -656,16 +671,17 @@ def view_appointment(appointment):
         ('Location', appointment.location)
     ]
 
-    for label_text, value in fields:
-        tk.Label(details_frame, text=label_text + ":", fg='black', bg='#fefefe',
-                 font=('Arial', 16, 'bold')).pack(anchor="w", pady=(10, 0))
-        tk.Label(details_frame, text=value, fg='black', bg='#fefefe',
-                 font=('Arial', 14)).pack(anchor="w", pady=(0, 10))
+    for label_text, value in appointment_fields:
+        tk.Label(appointment_frame, text=label_text + ":", fg='black', bg='#fefefe',
+                 font=('Arial', 14, 'bold')).pack(anchor="w", pady=(5, 0))
+        tk.Label(appointment_frame, text=value, fg='black', bg='#fefefe',
+                 font=('Arial', 12), wraplength=400, justify=tk.LEFT).pack(anchor="w", pady=(0, 10))
 
-    # customer details
+    # Customer details
     customer = customer_service.get_customer_by_id(appointment.customer_id)
-    tk.Label(details_frame, text="Customer:", fg='black', bg='#fefefe',
-             font=('Arial', 16, 'bold')).pack(anchor="w", pady=(20, 0))
+    tk.Label(customer_frame, text="Customer Details", fg='black', bg='#fefefe',
+             font=('Arial', 18, 'bold')).pack(anchor="w", pady=(0, 10))
+
     customer_fields = [
         ('Name', f"{customer.first_name} {customer.last_name}"),
         ('Phone', customer.phone_number),
@@ -674,26 +690,26 @@ def view_appointment(appointment):
     ]
 
     for label_text, value in customer_fields:
-        tk.Label(details_frame, text=label_text + ":", fg='black', bg='#fefefe',
-                 font=('Arial', 14, 'bold')).pack(anchor="w", pady=(10, 0))
-        tk.Label(details_frame, text=value, fg='black', bg='#fefefe',
-                 font=('Arial', 12)).pack(anchor="w", pady=(0, 10))
+        tk.Label(customer_frame, text=label_text + ":", fg='black', bg='#fefefe',
+                 font=('Arial', 14, 'bold')).pack(anchor="w", pady=(5, 0))
+        tk.Label(customer_frame, text=value, fg='black', bg='#fefefe',
+                 font=('Arial', 12), wraplength=400, justify=tk.LEFT).pack(anchor="w", pady=(0, 10))
 
-    # notes section
-    tk.Label(details_frame, text="Notes:", fg='black', bg='#fefefe',
-             font=('Arial', 16, 'bold')).pack(anchor="w", pady=(20, 0))
+    # Notes section
+    tk.Label(main_frame, text="Notes:", fg='black', bg='#fefefe',
+             font=('Arial', 16, 'bold')).pack(anchor="w", padx=20, pady=(10, 0))
 
     notes = notes_service.get_notes_for_appointment(appointment.id)
 
-    # add new note button
-    add_note_btn = tk.Button(details_frame, text="Add New Note",
+    # Add new note button
+    add_note_btn = tk.Button(main_frame, text="Add New Note",
                              command=lambda: add_note_to_appointment(appointment))
-    add_note_btn.pack(anchor="w", pady=(10, 10))
+    add_note_btn.pack(anchor="w", padx=20, pady=(10, 10))
 
     if notes:
         for note in notes:
-            note_frame = tk.Frame(details_frame, bg="#fefefe", bd=1, relief=tk.RIDGE)
-            note_frame.pack(fill=tk.X, pady=(0, 10))
+            note_frame = tk.Frame(main_frame, bg="#fefefe", bd=1, relief=tk.RIDGE)
+            note_frame.pack(fill=tk.X, padx=20, pady=(0, 10))
 
             title_label = tk.Label(note_frame, text=note.title, fg='blue', bg='#fefefe',
                                    cursor="hand2", font=('Arial', 14, 'underline'))
@@ -702,13 +718,13 @@ def view_appointment(appointment):
 
             snippet = (note.content[:100] + '...') if len(note.content) > 100 else note.content
             tk.Label(note_frame, text=snippet, fg='black', bg='#fefefe',
-                     font=('Arial', 12)).pack(anchor="w", padx=10)
+                     font=('Arial', 12), wraplength=800, justify=tk.LEFT).pack(anchor="w", padx=10)
 
             date_label = tk.Label(note_frame, text=note.created_at.strftime('%Y-%m-%d %H:%M:%S'),
                                   fg='gray', bg='#fefefe', font=('Arial', 10))
             date_label.pack(anchor="e", padx=10, pady=5)
 
-            # note actions
+            # Note actions
             actions_frame = tk.Frame(note_frame, bg="#fefefe")
             actions_frame.pack(anchor="e", padx=10, pady=5)
 
@@ -718,14 +734,7 @@ def view_appointment(appointment):
 
             delete_btn = tk.Button(actions_frame, text="Delete",
                                    command=lambda n=note: delete_note_for_appointment(appointment, n))
-            delete_btn.pack(side=tk.LEFT, padx=5)
-    else:
-        tk.Label(details_frame, text="No notes available.", fg='gray', bg='#fefefe',
-                 font=('Arial', 12)).pack(anchor="w", pady=(10, 0))
 
-    # back button
-    back_btn = tk.Button(details_frame, text="Back", font=('Arial', 12), command=show_appointments)
-    back_btn.pack(pady=20)
 
 def edit_appointment(appointment):
     clear_window()
