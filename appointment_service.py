@@ -49,11 +49,12 @@ class AppointmentService:
         cursor = self.conn.cursor()
         cursor.execute('''
             SELECT * FROM appointments
-            WHERE is_active = 1 AND datetime(start_time) >= datetime('now')
+            WHERE is_active = 1
             ORDER BY datetime(start_time)
             LIMIT ?
         ''', (limit,))
         rows = cursor.fetchall()
+        print(f"Retrieved {len(rows)} upcoming appointments.")
         return [Appointment(dict(row)) for row in rows]
 
     def update_appointment(self, appointment_id, **kwargs):
