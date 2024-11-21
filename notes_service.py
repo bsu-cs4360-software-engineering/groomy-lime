@@ -88,6 +88,17 @@ class NotesService:
         ''', (appointment_id,))
         return [Note(dict(row)) for row in cursor.fetchall()]
 
+    def get_notes_for_service(self, service_id):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT n.*
+            FROM notes n
+            JOIN service_notes sn ON n.id = sn.note_id
+            WHERE sn.service_id = ?
+            ORDER BY datetime(n.created_at) DESC
+        ''', (service_id,))
+        return [Note(dict(row)) for row in cursor.fetchall()]
+
     # update a note
     def update_note(self, note_id, title, content):
         with self.conn:
@@ -114,3 +125,10 @@ class NotesService:
         appointment_count = cursor.fetchone()['count']
         if customer_count == 0 and appointment_count == 0:
             self.conn.execute('DELETE FROM notes WHERE id = ?', (note_id,))
+
+    def create_note_only(self, title, content):
+        with self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute('INSERT INTO notes (title, content) VALUES (?, ?)', (title, content))
+            note_id = cursor.lastrowid
+            return self.get_note_by_id(note_id)

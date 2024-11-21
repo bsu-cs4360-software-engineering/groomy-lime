@@ -6,12 +6,14 @@ from appointment_service import AppointmentService
 import sqlite3
 from datetime import datetime
 from notes_service import NotesService
-
+from services_service import ServicesService
+# might need to change this name if it gets too confusing
 
 logged_in = False
 sidebar = None
 customers_btn = None
 appointments_btn = None
+services_btn = None
 
 # SHARED database
 conn = sqlite3.connect('app.db')
@@ -20,6 +22,7 @@ conn.execute('PRAGMA foreign_keys = ON')  # foreign keys supported
 customer_service = CustomerService(conn)
 appointment_service = AppointmentService(conn)
 notes_service = NotesService(conn)
+services_service = ServicesService(conn)
 
 # main window creation
 home = tk.Tk()
@@ -30,7 +33,7 @@ home.title("Groomy") # title of the screen
 user_manager = UserManager('users.db')
 
 def create_sidebar():
-    global home_btn, customers_btn, appointments_btn, sidebar, logged_in
+    global home_btn, customers_btn, appointments_btn, services_btn, sidebar, logged_in
 
     # removes the sidebar
     if sidebar:
@@ -52,6 +55,9 @@ def create_sidebar():
 
         appointments_btn = tk.Button(sidebar, text="APPOINTMENTS", font=('Arial', 15), fg='#FFFFFF', bg='#156082', bd=0, height=2, width=20, command=show_appointments)
         appointments_btn.pack(pady=10)
+
+        services_btn = tk.Button(sidebar, text="SERVICES", font=('Arial', 15), fg='#FFFFFF', bg='#156082', bd=0, height=2, width=20, command=show_services)
+        services_btn.pack(pady=10)
 
 def show_home():
     clear_window()
@@ -940,12 +946,125 @@ def delete_appointment(appointment):
         messagebox.showinfo("Deleted", "Appointment deleted successfully.")
         show_appointments()
 
-# General functions
+# services
+def show_services():
+    clear_window()
+    reset_sidebar_buttons()
+    services_btn.config(bg='#1d81af')
+
+    # add header label to main_frame
+    tk.Label(main_frame, text="Services", font=("Comic Sans MS", 30), bg="#FFFFFF", fg="#156082").pack(
+        anchor="nw", padx=20, pady=5)
+
+    # clickable label to add a new service
+    add_new_service_label = tk.Label(main_frame, text="Add New Service", fg='blue', bg='#FFFFFF',
+                                     cursor="hand2", font=('Arial', 14, 'underline'))
+    add_new_service_label.pack(pady=(0, 20))
+    add_new_service_label.bind("<Button-1>", lambda event: show_create_service_form())
+
+    # frame to hold the list of services
+    list_frame = tk.Frame(main_frame, bg="#FFFFFF")
+    list_frame.pack(fill=tk.BOTH, expand=True)
+
+    # configure grid columns
+    for i in range(4):
+        list_frame.columnconfigure(i, weight=1, uniform='column')
+
+    # get services
+    services = services_service.get_all_services()
+
+    # services page headers
+    headers = ["Name", "Description", "Price", "Actions"]
+    for idx, header in enumerate(headers):
+        tk.Label(list_frame, text=header, font=('Arial', 16, 'bold'), bg="#FFFFFF").grid(
+            row=0, column=idx, padx=10, pady=10, sticky='ew')
+
+    # lists services
+    for idx, service in enumerate(services, start=1):
+        # name
+        name_label = tk.Label(list_frame, text=service.name, font=('Arial', 14), fg='blue', bg="#FFFFFF", cursor="hand2")
+        name_label.grid(row=idx, column=0, padx=10, pady=10, sticky='ew')
+        name_label.bind("<Button-1>", lambda event, svc=service: view_service(svc))
+
+        # description (max 100 characters)
+        description = (service.description[:100] + '...') if len(service.description) > 100 else service.description
+        tk.Label(list_frame, text=description, font=('Arial', 14), bg="#FFFFFF", anchor='w').grid(
+            row=idx, column=1, padx=10, pady=10, sticky='ew')
+
+        # price
+        tk.Label(list_frame, text=f"${service.price:.2f}", font=('Arial', 14), bg="#FFFFFF").grid(
+            row=idx, column=2, padx=10, pady=10, sticky='ew')
+
+        # actions
+        actions_frame = tk.Frame(list_frame, bg="#FFFFFF")
+        actions_frame.grid(row=idx, column=3, padx=10, pady=10, sticky='ew')
+
+        view_btn = tk.Button(actions_frame, text="View", font=('Arial', 12),
+                             command=lambda svc=service: view_service(svc))
+        view_btn.pack(side=tk.LEFT, padx=5, expand=True)
+
+        edit_btn = tk.Button(actions_frame, text="Edit", font=('Arial', 12),
+                             command=lambda svc=service: edit_service(svc))
+        edit_btn.pack(side=tk.LEFT, padx=5, expand=True)
+
+        delete_btn = tk.Button(actions_frame, text="Delete", font=('Arial', 12),
+                               command=lambda svc=service: delete_service(svc))
+        delete_btn.pack(side=tk.LEFT, padx=5, expand=True)
+
+
+def show_create_service_form():
+    clear_window()
+
+    # add header label to main_frame
+    tk.Label(main_frame, text="New Service", font=("Comic Sans MS", 30), bg="#FFFFFF",
+             fg="#156082").pack(anchor="nw", padx=20, pady=5)
+
+    # create a container frame to center the form
+    container_frame = tk.Frame(main_frame, bg="#FFFFFF")
+    container_frame.pack(expand=True)
+
+    # create form_frame inside container_frame
+    form_frame = tk.Frame(container_frame, bg="#FFFFFF")
+    form_frame.pack()
+
+    # name
+    tk.Label(form_frame, text="Name", fg='black', bg='#fefefe').pack(
+        anchor="w", padx=(10, 5), pady=(5, 0))
+    name_entry = tk.Entry(form_frame, font=('Arial', 12), bd=0,
+                          highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    name_entry.pack(padx=(10, 5), pady=(0, 10))
+
+    # description
+    tk.Label(form_frame, text="Description", fg='black', bg='#fefefe').pack(
+        anchor="w", padx=(10, 5))
+    description_entry = tk.Text(form_frame, font=('Arial', 12), bd=0, height=5,
+                                highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    description_entry.pack(padx=(10, 5), pady=(0, 10))
+
+    # price
+    tk.Label(form_frame, text="Price", fg='black', bg='#fefefe').pack(
+        anchor="w", padx=(10, 5))
+    price_entry = tk.Entry(form_frame, font=('Arial', 12), bd=0,
+                           highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    price_entry.pack(padx=(10, 5), pady=(0, 10))
+
+    # save button
+    save_btn = tk.Button(form_frame, text="Save", command=lambda: save_service(
+        name_entry.get(),
+        description_entry.get("1.0", tk.END).strip(),
+        price_entry.get()
+    ))
+    save_btn.pack(pady=10)
+
+
+
+# general functions
 def reset_sidebar_buttons():
     home_btn.config(bg='#156082')
     if logged_in:
         customers_btn.config(bg='#156082')
         appointments_btn.config(bg='#156082')
+        services_btn.config(bg='#156082')
 
 def save_and_go_home():
     # retrieves the information entered in each of the entry boxes
@@ -961,6 +1080,219 @@ def save_and_go_home():
 def clear_window():  # clears window
     for widget in main_frame.winfo_children():
         widget.destroy()
+
+def save_service(name, description, price):
+    try:
+        price = float(price)
+        services_service.create_service(name, description, price)
+        messagebox.showinfo("Success", "Service created successfully!")
+        show_services()
+    except ValueError:
+        messagebox.showerror("Error", "Invalid price. Please enter a valid number.")
+
+def view_service(service):
+    clear_window()
+    # Clear main_frame
+    for widget in main_frame.winfo_children():
+        widget.destroy()
+
+    # Add header label
+    tk.Label(main_frame, text="Service Details", font=("Comic Sans MS", 30), bg="#FFFFFF",
+             fg="#156082").pack(anchor="nw", padx=20, pady=5)
+
+    details_frame = tk.Frame(main_frame, bg="#FFFFFF")
+    details_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+    # Service details
+    fields = [
+        ('Name', service.name),
+        ('Description', service.description),
+        ('Price', f"${service.price:.2f}")
+    ]
+
+    for label_text, value in fields:
+        tk.Label(details_frame, text=label_text + ":", fg='black', bg='#fefefe',
+                 font=('Arial', 16, 'bold')).pack(anchor="w", pady=(10, 0))
+        tk.Label(details_frame, text=value, fg='black', bg='#fefefe',
+                 font=('Arial', 14), wraplength=800, justify=tk.LEFT).pack(anchor="w", pady=(0, 10))
+
+    # Notes section
+    tk.Label(details_frame, text="Notes:", fg='black', bg='#fefefe',
+             font=('Arial', 16, 'bold')).pack(anchor="w", pady=(20, 0))
+
+    notes = notes_service.get_notes_for_service(service.id)
+
+    # Add new note button
+    add_note_btn = tk.Button(details_frame, text="Add New Note",
+                             command=lambda: add_note_to_service(service))
+    add_note_btn.pack(anchor="w", pady=(10, 10))
+
+    if notes:
+        for note in notes:
+            note_frame = tk.Frame(details_frame, bg="#fefefe", bd=1, relief=tk.RIDGE)
+            note_frame.pack(fill=tk.X, pady=(0, 10))
+
+            title_label = tk.Label(note_frame, text=note.title, fg='blue', bg='#fefefe',
+                                   cursor="hand2", font=('Arial', 14, 'underline'))
+            title_label.pack(anchor="w", padx=10, pady=5)
+            title_label.bind("<Button-1>", lambda event, n=note: view_note_popup(n))
+
+            snippet = (note.content[:100] + '...') if len(note.content) > 100 else note.content
+            tk.Label(note_frame, text=snippet, fg='black', bg='#fefefe',
+                     font=('Arial', 12)).pack(anchor="w", padx=10)
+
+            date_label = tk.Label(note_frame, text=note.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                                  fg='gray', bg='#fefefe', font=('Arial', 10))
+            date_label.pack(anchor="e", padx=10, pady=5)
+
+            # Note actions
+            actions_frame = tk.Frame(note_frame, bg="#fefefe")
+            actions_frame.pack(anchor="e", padx=10, pady=5)
+
+            edit_btn = tk.Button(actions_frame, text="Edit",
+                                 command=lambda n=note: edit_note_for_service(service, n))
+            edit_btn.pack(side=tk.LEFT, padx=5)
+
+            delete_btn = tk.Button(actions_frame, text="Delete",
+                                   command=lambda n=note: delete_note_for_service(service, n))
+            delete_btn.pack(side=tk.LEFT, padx=5)
+    else:
+        tk.Label(details_frame, text="No notes available.", fg='gray', bg='#fefefe',
+                 font=('Arial', 12)).pack(anchor="w", pady=(10, 0))
+
+    # Back button
+    back_btn = tk.Button(details_frame, text="Back", font=('Arial', 12), command=show_services)
+    back_btn.pack(pady=20)
+
+def edit_service(service):
+    clear_window()
+
+    # Add header label to main_frame
+    tk.Label(main_frame, text="Edit Service", font=("Comic Sans MS", 30), bg="#FFFFFF",
+             fg="#156082").pack(anchor="nw", padx=20, pady=5)
+
+    # Create a container frame to center the form vertically
+    container_frame = tk.Frame(main_frame, bg="#FFFFFF")
+    container_frame.pack(expand=True)
+
+    # Create form_frame inside container_frame
+    form_frame = tk.Frame(container_frame, bg="#FFFFFF")
+    form_frame.pack()
+
+    # Name
+    tk.Label(form_frame, text="Name", fg='black', bg='#fefefe').pack(
+        anchor="w", padx=(10, 5), pady=(5, 0))
+    name_entry = tk.Entry(form_frame, font=('Arial', 12), bd=0,
+                          highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    name_entry.insert(0, service.name)
+    name_entry.pack(padx=(10, 5), pady=(0, 10))
+
+    # Description
+    tk.Label(form_frame, text="Description", fg='black', bg='#fefefe').pack(
+        anchor="w", padx=(10, 5))
+    description_entry = tk.Text(form_frame, font=('Arial', 12), bd=0, height=5,
+                                highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    description_entry.insert("1.0", service.description)
+    description_entry.pack(padx=(10, 5), pady=(0, 10))
+
+    # Price
+    tk.Label(form_frame, text="Price", fg='black', bg='#fefefe').pack(
+        anchor="w", padx=(10, 5))
+    price_entry = tk.Entry(form_frame, font=('Arial', 12), bd=0,
+                           highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    price_entry.insert(0, f"{service.price:.2f}")
+    price_entry.pack(padx=(10, 5), pady=(0, 10))
+
+    # Update button
+    update_btn = tk.Button(form_frame, text="Update", command=lambda: update_service(
+        service.id,
+        name_entry.get(),
+        description_entry.get("1.0", tk.END).strip(),
+        price_entry.get()
+    ))
+    update_btn.pack(pady=10)
+
+def update_service(service_id, name, description, price):
+    try:
+        price = float(price)
+        services_service.update_service(service_id, name, description, price)
+        messagebox.showinfo("Success", "Service updated successfully!")
+        show_services()
+    except ValueError:
+        messagebox.showerror("Error", "Invalid price. Please enter a valid number.")
+
+def delete_service(service):
+    result = messagebox.askquestion("Delete Service", f"Are you sure you want to delete '{service.name}'?", icon='warning')
+    if result == 'yes':
+        services_service.soft_delete_service(service.id)
+        messagebox.showinfo("Deleted", "Service deleted successfully.")
+        show_services()
+
+def add_note_to_service(service):
+    def save_note():
+        title = title_entry.get()
+        content = content_text.get("1.0", tk.END).strip()
+        if title and content:
+            note = notes_service.create_note_only(title, content)
+            services_service.add_note_to_service(service.id, note.id)
+            note_window.destroy()
+            view_service(service)
+        else:
+            messagebox.showerror("Error", "Please enter both title and content.")
+
+    note_window = tk.Toplevel(home)
+    note_window.title("Add Note")
+    note_window.geometry("400x300")
+
+    tk.Label(note_window, text="Title").pack(pady=(10, 0))
+    title_entry = tk.Entry(note_window, width=50)
+    title_entry.pack(pady=(0, 10))
+
+    tk.Label(note_window, text="Content").pack()
+    content_text = tk.Text(note_window, width=50, height=10)
+    content_text.pack()
+
+    save_btn = tk.Button(note_window, text="Save", command=save_note)
+    save_btn.pack(pady=10)
+
+def edit_note_for_service(service, note):
+    def update_note():
+        new_title = title_entry.get()
+        new_content = content_text.get("1.0", tk.END).strip()
+        if new_title and new_content:
+            notes_service.update_note(note.id, new_title, new_content)
+            note_window.destroy()
+            view_service(service)
+        else:
+            messagebox.showerror("Error", "Please enter both title and content.")
+
+    note_window = tk.Toplevel(home)
+    note_window.title("Edit Note")
+    note_window.geometry("400x300")
+
+    tk.Label(note_window, text="Title").pack(pady=(10, 0))
+    title_entry = tk.Entry(note_window, width=50)
+    title_entry.insert(0, note.title)
+    title_entry.pack(pady=(0, 10))
+
+    tk.Label(note_window, text="Content").pack()
+    content_text = tk.Text(note_window, width=50, height=10)
+    content_text.insert(tk.END, note.content)
+    content_text.pack()
+
+    save_btn = tk.Button(note_window, text="Update", command=update_note)
+    save_btn.pack(pady=10)
+
+def delete_note_for_service(service, note):
+    result = messagebox.askquestion("Delete Note",
+                                    f"Are you sure you want to delete '{note.title}'?",
+                                    icon='warning')
+    if result == 'yes':
+        services_service.delete_note_for_service(service.id, note.id)
+        view_service(service)
+
+
+
 
 # makes default page
 create_sidebar()
