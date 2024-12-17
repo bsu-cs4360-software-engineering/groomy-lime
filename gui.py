@@ -7,13 +7,16 @@ import sqlite3
 from datetime import datetime
 from notes_service import NotesService
 from services_service import ServicesService
-# might need to change this name if it gets too confusing
+from invoice_service import InvoiceService
+from invoice_setup import setup_invoice_tables
+
 
 logged_in = False
 sidebar = None
 customers_btn = None
 appointments_btn = None
 services_btn = None
+
 
 # SHARED database
 conn = sqlite3.connect('app.db')
@@ -23,6 +26,8 @@ customer_service = CustomerService(conn)
 appointment_service = AppointmentService(conn)
 notes_service = NotesService(conn)
 services_service = ServicesService(conn)
+invoice_service = InvoiceService(conn)
+setup_invoice_tables(conn)
 
 # main window creation
 home = tk.Tk()
@@ -33,7 +38,7 @@ home.title("Groomy") # title of the screen
 user_manager = UserManager('users.db')
 
 def create_sidebar():
-    global home_btn, customers_btn, appointments_btn, services_btn, sidebar, logged_in
+    global home_btn, customers_btn, appointments_btn, services_btn, sidebar, logged_in, invoices_btn
 
     # removes the sidebar
     if sidebar:
@@ -58,6 +63,9 @@ def create_sidebar():
 
         services_btn = tk.Button(sidebar, text="SERVICES", font=('Arial', 15), fg='#FFFFFF', bg='#156082', bd=0, height=2, width=20, command=show_services)
         services_btn.pack(pady=10)
+
+        invoices_btn = tk.Button(sidebar, text="INVOICES", font=('Arial', 15), fg='#ffffff', bg='#156082', bd=0, height=2, width=20, command=show_invoices)
+        invoices_btn.pack(pady=10)
 
 def show_home():
     clear_window()
@@ -647,19 +655,19 @@ def view_appointment(appointment):
     details_frame = tk.Frame(main_frame, bg="#FFFFFF")
     details_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-    # Configure grid columns in details_frame
+    # configure grid columns in details_frame
     details_frame.columnconfigure(0, weight=1, uniform='column')
     details_frame.columnconfigure(1, weight=1, uniform='column')
 
-    # Appointment details frame
+    # appointment details frame
     appointment_frame = tk.Frame(details_frame, bg="#FFFFFF")
     appointment_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 10))
 
-    # Customer details frame
+    # customer details frame
     customer_frame = tk.Frame(details_frame, bg="#FFFFFF")
     customer_frame.grid(row=0, column=1, sticky='nsew', padx=(10, 0))
 
-    # Appointment details
+    # appointment details
     tk.Label(appointment_frame, text="Appointment Details", fg='black', bg='#fefefe',
              font=('Arial', 18, 'bold')).pack(anchor="w", pady=(0, 10))
 
@@ -1074,6 +1082,7 @@ def reset_sidebar_buttons():
         customers_btn.config(bg='#156082')
         appointments_btn.config(bg='#156082')
         services_btn.config(bg='#156082')
+        invoices_btn.config(bg='#156082')
 
 def save_and_go_home():
     # retrieves the information entered in each of the entry boxes
@@ -1300,8 +1309,399 @@ def delete_note_for_service(service, note):
         services_service.delete_note_for_service(service.id, note.id)
         view_service(service)
 
+# invoices
+def show_invoices():
+    clear_window()
+    reset_sidebar_buttons()
+    invoices_btn.config(bg='#1d81af')
+
+    # add header label
+    tk.Label(main_frame, text="Invoices", font=("Comic Sans MS", 30), bg="#ffffff", fg="#156082").pack(anchor="nw", padx=20, pady=5)
+
+    # frame for filter and new invoice
+    top_frame = tk.Frame(main_frame, bg="#ffffff")
+    top_frame.pack(anchor="nw", padx=20, pady=10)
+
+    # filter for unpaid or all
+    filter_var = tk.StringVar(value="unpaid")
+
+    def refresh_invoices():
+        show_invoice_list(filter_var.get())
+
+    # radio buttons for filter
+    tk.Radiobutton(top_frame, text="Unpaid Only", variable=filter_var, value="unpaid", command=refresh_invoices, bg="#ffffff").pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(top_frame, text="All", variable=filter_var, value="all", command=refresh_invoices, bg="#ffffff").pack(side=tk.LEFT, padx=5)
+
+    # new invoice clickable label
+    new_invoice_label = tk.Label(top_frame, text="New Invoice", fg='blue', bg='#ffffff', cursor="hand2", font=('Arial', 14, 'underline'))
+    new_invoice_label.pack(side=tk.LEFT, padx=20)
+    new_invoice_label.bind("<Button-1>", lambda e: show_create_invoice_form())
+
+    # create a frame for the invoice list
+    list_frame = tk.Frame(main_frame, bg="#ffffff")
+    list_frame.pack(fill=tk.BOTH, expand=True)
+
+    def show_invoice_list(filter_type):
+        # clear list_frame first
+        for w in list_frame.winfo_children():
+            w.destroy()
+
+        invoices = invoice_service.get_invoices(show_only_unpaid=(filter_type=="unpaid"))
+
+        # headers
+        headers = ["Invoice #", "Date", "Client", "Total", "Paid?", "Actions"]
+        for idx, header in enumerate(headers):
+            tk.Label(list_frame, text=header, font=('Arial',16,'bold'), bg='#ffffff').grid(row=0, column=idx, padx=10, pady=10, sticky='ew')
+
+        # populate
+        for i, inv in enumerate(invoices, start=1):
+            invoice_number = inv.id
+            invoice_date = inv.created_date
+            client_name = inv.get_customer_full_name()
+            total_str = f"${inv.total:.2f}"
+            paid_str = "Yes" if inv.is_paid() else "No"
+
+            # clickable invoice number to view
+            inv_label = tk.Label(list_frame, text=str(invoice_number), fg='blue', bg='#ffffff', cursor="hand2", font=('Arial',14,'underline'))
+            inv_label.grid(row=i, column=0, padx=10, pady=10, sticky='ew')
+            inv_label.bind("<Button-1>", lambda e, inv_obj=inv: view_invoice(inv_obj))
+
+            tk.Label(list_frame, text=invoice_date, font=('Arial',14), bg='#ffffff').grid(row=i, column=1, padx=10, pady=10, sticky='ew')
+            tk.Label(list_frame, text=client_name, font=('Arial',14), bg='#ffffff').grid(row=i, column=2, padx=10, pady=10, sticky='ew')
+            tk.Label(list_frame, text=total_str, font=('Arial',14), bg='#ffffff').grid(row=i, column=3, padx=10, pady=10, sticky='ew')
+            tk.Label(list_frame, text=paid_str, font=('Arial',14), bg='#ffffff').grid(row=i, column=4, padx=10, pady=10, sticky='ew')
+
+            # actions: view, edit, delete
+            actions_frame = tk.Frame(list_frame, bg='#ffffff')
+            actions_frame.grid(row=i, column=5, padx=10, pady=10, sticky='ew')
+
+            view_btn = tk.Button(actions_frame, text="View", font=('Arial',12), command=lambda inv_obj=inv: view_invoice(inv_obj))
+            view_btn.pack(side=tk.LEFT, padx=5, expand=True)
+
+            edit_btn = tk.Button(actions_frame, text="Edit", font=('Arial',12), command=lambda inv_obj=inv: edit_invoice(inv_obj))
+            edit_btn.pack(side=tk.LEFT, padx=5, expand=True)
+
+            delete_btn = tk.Button(actions_frame, text="Delete", font=('Arial',12), command=lambda inv_obj=inv: delete_invoice(inv_obj))
+            delete_btn.pack(side=tk.LEFT, padx=5, expand=True)
+
+    # show initial list
+    show_invoice_list("unpaid")
 
 
+def show_create_invoice_form():
+    clear_window()
+    # header
+    tk.Label(main_frame, text="New Invoice", font=("Comic Sans MS",30), bg="#ffffff", fg="#156082").pack(anchor="nw", padx=20, pady=5)
+
+    # form frame
+    form_frame = tk.Frame(main_frame, bg="#ffffff")
+    form_frame.pack(expand=True)
+
+    # select customer
+    tk.Label(form_frame, text="Customer", fg='black', bg='#fefefe').pack(anchor="w", padx=(10,5), pady=(5,0))
+    customers = customer_service.get_all_customers()
+    customer_options = [f"{c.id}: {c.first_name} {c.last_name}" for c in customers]
+    selected_customer = tk.StringVar()
+    if customer_options:
+        selected_customer.set(customer_options[0])
+        customer_dropdown = tk.OptionMenu(form_frame, selected_customer, *customer_options)
+        customer_dropdown.pack(padx=(10,5), pady=(0,10))
+    else:
+        tk.Label(form_frame, text="No Customers Available", fg='red', bg='#ffffff').pack()
+        return
+
+    # invoice date and due date
+    tk.Label(form_frame, text="Due Date (YYYY-MM-DD)", fg='black', bg='#fefefe').pack(anchor='w', padx=(10,5))
+    due_date_entry = tk.Entry(form_frame, font=('Arial',12), bd=0, highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    due_date_entry.pack(padx=(10,5), pady=(0,10))
+
+    # services
+    # get services to add line items
+    all_services = services_service.get_all_services()
+    service_options = [f"{svc.id}: {svc.name} ${svc.price:.2f}" for svc in all_services]
+    service_frame = tk.Frame(form_frame, bg="#ffffff")
+    service_frame.pack(pady=10, fill=tk.X)
+
+    tk.Label(service_frame, text="Line Items (select service and date):", fg='black', bg='#fefefe').pack(anchor='w', padx=(10,5))
+
+    line_items = []  # will store tuples of (service_var, date_entry)
+    def add_line_item():
+        lf = tk.Frame(service_frame, bg="#ffffff")
+        lf.pack(anchor='w', fill=tk.X, pady=5)
+
+        service_var = tk.StringVar()
+        if service_options:
+            service_var.set(service_options[0])
+            service_dropdown = tk.OptionMenu(lf, service_var, *service_options)
+            service_dropdown.pack(side=tk.LEFT, padx=(10,5))
+        else:
+            tk.Label(lf, text="No Services Available", fg='red', bg='#ffffff').pack(side=tk.LEFT, padx=(10,5))
+
+        date_entry = tk.Entry(lf, font=('Arial',12), bd=0, highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+        date_entry.pack(side=tk.LEFT, padx=(10,5))
+        date_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
+
+        line_items.append((service_var, date_entry))
+
+    add_line_item_btn = tk.Button(service_frame, text="Add Line Item", command=add_line_item)
+    add_line_item_btn.pack(anchor='w', padx=(10,5), pady=(5,0))
+
+    # notes
+    tk.Label(form_frame, text="Notes", fg='black', bg='#fefefe').pack(anchor='w', padx=(10,5), pady=(20,0))
+    notes_text = tk.Text(form_frame, font=('Arial',12), bd=0, height=5, highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    notes_text.pack(padx=(10,5), pady=(0,10))
+
+    def save_invoice():
+        customer_id = int(selected_customer.get().split(":")[0])
+        due_date = due_date_entry.get().strip()
+        notes_content = notes_text.get("1.0", tk.END).strip()
+
+        # parse line items
+        parsed_line_items = []
+        for (svc_var, date_e) in line_items:
+            svc_str = svc_var.get()
+            if not svc_str:
+                continue
+            svc_id = int(svc_str.split(":")[0])
+            svc_date = date_e.get().strip()
+            parsed_line_items.append({"service_id": svc_id, "service_date": svc_date})
+
+        if not parsed_line_items:
+            messagebox.showerror("Error", "At least one line item is required.")
+            return
+
+        try:
+            invoice = invoice_service.create_invoice(customer_id, due_date, parsed_line_items, notes_content)
+            messagebox.showinfo("Success", f"Invoice #{invoice.id} created successfully!")
+            show_invoices()
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    save_btn = tk.Button(form_frame, text="Save Invoice", command=save_invoice)
+    save_btn.pack(pady=10)
+
+
+def view_invoice(invoice):
+    clear_window()
+    # similar layout to view_customer, view_appointment
+    tk.Label(main_frame, text=f"Invoice #{invoice.id}", font=("Comic Sans MS",30), bg="#ffffff", fg="#156082").pack(anchor='nw', padx=20, pady=5)
+
+    details_frame = tk.Frame(main_frame, bg='#ffffff')
+    details_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+    # invoice info
+    tk.Label(details_frame, text="Invoice Info:", fg='black', bg='#fefefe', font=('Arial',16,'bold')).pack(anchor='w', pady=(10,0))
+    tk.Label(details_frame, text=f"Date: {invoice.created_date}", fg='black', bg='#fefefe', font=('Arial',14)).pack(anchor='w', pady=(0,10))
+    tk.Label(details_frame, text=f"Due Date: {invoice.due_date}", fg='black', bg='#fefefe', font=('Arial',14)).pack(anchor='w', pady=(0,10))
+    tk.Label(details_frame, text=f"Paid: {'Yes' if invoice.is_paid() else 'No'}", fg='black', bg='#fefefe', font=('Arial',14)).pack(anchor='w', pady=(0,10))
+
+    # customer info
+    tk.Label(details_frame, text="Customer Info:", fg='black', bg='#fefefe', font=('Arial',16,'bold')).pack(anchor='w', pady=(20,0))
+    tk.Label(details_frame, text=f"Name: {invoice.get_customer_full_name()}", fg='black', bg='#fefefe', font=('Arial',14)).pack(anchor='w', pady=(0,10))
+    tk.Label(details_frame, text=f"Email: {invoice.customer_email}", fg='black', bg='#fefefe', font=('Arial',14)).pack(anchor='w', pady=(0,10))
+    tk.Label(details_frame, text=f"Phone: {invoice.customer_phone}", fg='black', bg='#fefefe', font=('Arial',14)).pack(anchor='w', pady=(0,10))
+    tk.Label(details_frame, text=f"Address: {invoice.customer_address}", fg='black', bg='#fefefe', font=('Arial',14), wraplength=800, justify=tk.LEFT).pack(anchor='w', pady=(0,10))
+
+    # line items
+    tk.Label(details_frame, text="Line Items:", fg='black', bg='#fefefe', font=('Arial',16,'bold')).pack(anchor='w', pady=(20,0))
+    line_items_frame = tk.Frame(details_frame, bg='#ffffff')
+    line_items_frame.pack(anchor='w', fill=tk.X)
+
+    headers = ["Date", "Service", "Qty", "Price", "Line Total"]
+    for idx, h in enumerate(headers):
+        tk.Label(line_items_frame, text=h, font=('Arial',14,'bold'), bg='#fefefe').grid(row=0, column=idx, padx=10, pady=10, sticky='ew')
+
+    for i, li in enumerate(invoice.line_items, start=1):
+        tk.Label(line_items_frame, text=li.service_date, font=('Arial',14), bg='#fefefe').grid(row=i, column=0, padx=10, pady=5, sticky='ew')
+        tk.Label(line_items_frame, text=li.service_name, font=('Arial',14), bg='#fefefe').grid(row=i, column=1, padx=10, pady=5, sticky='ew')
+        tk.Label(line_items_frame, text=str(li.quantity), font=('Arial',14), bg='#fefefe').grid(row=i, column=2, padx=10, pady=5, sticky='ew')
+        tk.Label(line_items_frame, text=f"${li.service_price:.2f}", font=('Arial',14), bg='#fefefe').grid(row=i, column=3, padx=10, pady=5, sticky='ew')
+        tk.Label(line_items_frame, text=f"${li.get_line_total():.2f}", font=('Arial',14), bg='#fefefe').grid(row=i, column=4, padx=10, pady=5, sticky='ew')
+
+    tk.Label(details_frame, text=f"Total: ${invoice.total:.2f}", fg='black', bg='#fefefe', font=('Arial',16,'bold')).pack(anchor='e', pady=(20,0))
+
+    # notes section
+    tk.Label(details_frame, text="Notes:", fg='black', bg='#fefefe', font=('Arial',16,'bold')).pack(anchor='w', pady=(20,0))
+
+    add_note_btn = tk.Button(details_frame, text="Add New Note", command=lambda: add_note_to_invoice(invoice))
+    add_note_btn.pack(anchor='w', pady=(10,10))
+
+    if invoice.notes:
+        for note in invoice.notes:
+            note_frame = tk.Frame(details_frame, bg="#fefefe", bd=1, relief=tk.RIDGE)
+            note_frame.pack(fill=tk.X, pady=(0,10))
+
+            title_label = tk.Label(note_frame, text=note.title, fg='blue', bg='#fefefe', cursor="hand2", font=('Arial',14,'underline'))
+            title_label.pack(anchor='w', padx=10, pady=5)
+            title_label.bind("<Button-1>", lambda e, n=note: view_note_popup(n))
+
+            snippet = (note.content[:100] + '...') if len(note.content) > 100 else note.content
+            tk.Label(note_frame, text=snippet, fg='black', bg='#fefefe', font=('Arial',12)).pack(anchor='w', padx=10)
+
+            date_label = tk.Label(note_frame, text=note.created_at.strftime('%Y-%m-%d %H:%M:%S'), fg='gray', bg='#fefefe', font=('Arial',10))
+            date_label.pack(anchor='e', padx=10, pady=5)
+
+            actions_frame = tk.Frame(note_frame, bg='#fefefe')
+            actions_frame.pack(anchor='e', padx=10, pady=5)
+
+            edit_btn = tk.Button(actions_frame, text="Edit", command=lambda n=note: edit_note_for_invoice(invoice, n))
+            edit_btn.pack(side=tk.LEFT, padx=5)
+
+            delete_btn = tk.Button(actions_frame, text="Delete", command=lambda n=note: delete_note_for_invoice(invoice, n))
+            delete_btn.pack(side=tk.LEFT, padx=5)
+    else:
+        tk.Label(details_frame, text="No notes available.", fg='gray', bg='#fefefe', font=('Arial',12)).pack(anchor='w', pady=(10,0))
+
+    # back, edit, delete buttons at bottom
+    bottom_frame = tk.Frame(main_frame, bg='#ffffff')
+    bottom_frame.pack(anchor='e', padx=20, pady=20)
+
+    back_btn = tk.Button(bottom_frame, text="Back", font=('Arial',12), command=show_invoices)
+    back_btn.pack(side=tk.LEFT, padx=10)
+
+    edit_btn = tk.Button(bottom_frame, text="Edit", font=('Arial',12), command=lambda: edit_invoice(invoice))
+    edit_btn.pack(side=tk.LEFT, padx=10)
+
+    delete_btn = tk.Button(bottom_frame, text="Delete", font=('Arial',12), command=lambda: delete_invoice(invoice))
+    delete_btn.pack(side=tk.LEFT, padx=10)
+
+    if not invoice.is_paid():
+        pay_btn = tk.Button(bottom_frame, text="Pay", font=('Arial',12), command=lambda: mark_invoice_as_paid(invoice))
+        pay_btn.pack(side=tk.LEFT, padx=10)
+
+def mark_invoice_as_paid(invoice):
+    invoice_service.mark_invoice_paid(invoice.id)
+    messagebox.showinfo("Success", f"Invoice #{invoice.id} marked as paid.")
+    # display invoice again
+    updated_invoice = invoice_service.get_invoice_by_id(invoice.id)
+    view_invoice(updated_invoice)
+
+def delete_invoice(invoice):
+    result = messagebox.askquestion("Delete Invoice", f"Are you sure you want to delete Invoice #{invoice.id}?", icon='warning')
+    if result == 'yes':
+        invoice_service.soft_delete_invoice(invoice.id)
+        messagebox.showinfo("Deleted", f"Invoice #{invoice.id} deleted successfully.")
+        show_invoices()
+
+def edit_invoice(invoice):
+    clear_window()
+    tk.Label(main_frame, text=f"Edit Invoice #{invoice.id}", font=("Comic Sans MS",30), bg="#ffffff", fg="#156082").pack(anchor="nw", padx=20, pady=5)
+
+    form_frame = tk.Frame(main_frame, bg="#ffffff")
+    form_frame.pack(expand=True)
+
+    # customer
+    tk.Label(form_frame, text="Customer", fg='black', bg='#fefefe').pack(anchor="w", padx=(10,5), pady=(5,0))
+    customers = customer_service.get_all_customers()
+    customer_options = [f"{c.id}: {c.first_name} {c.last_name}" for c in customers]
+    selected_customer = tk.StringVar()
+    if customer_options:
+        # set to current invoice's customer
+        current_customer_option = f"{invoice.customer_id}: {invoice.customer_first_name} {invoice.customer_last_name}"
+        # if current_customer_option not in list, just append it
+        if current_customer_option not in customer_options:
+            customer_options.insert(0, current_customer_option)
+        selected_customer.set(current_customer_option)
+        customer_dropdown = tk.OptionMenu(form_frame, selected_customer, *customer_options)
+        customer_dropdown.pack(padx=(10,5), pady=(0,10))
+    else:
+        tk.Label(form_frame, text="No Customers Available", fg='red', bg='#ffffff').pack()
+        return
+
+    # due date
+    tk.Label(form_frame, text="Due Date (YYYY-MM-DD)", fg='black', bg='#fefefe').pack(anchor='w', padx=(10,5))
+    due_date_entry = tk.Entry(form_frame, font=('Arial',12), bd=0, highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    due_date_entry.pack(padx=(10,5), pady=(0,10))
+    due_date_entry.insert(0, invoice.due_date)
+
+    # line items
+    all_services = services_service.get_all_services()
+    service_options = [f"{svc.id}: {svc.name} ${svc.price:.2f}" for svc in all_services]
+
+    service_frame = tk.Frame(form_frame, bg="#ffffff")
+    service_frame.pack(pady=10, fill=tk.X)
+
+    tk.Label(service_frame, text="Line Items (select service and date):", fg='black', bg='#fefefe').pack(anchor='w', padx=(10,5))
+
+    line_items = []  # (service_var, date_entry)
+
+    def add_line_item_prefilled(service_id=None, service_date_str=None):
+        # if no service_id given, default to first in list if available
+        lf = tk.Frame(service_frame, bg="#ffffff")
+        lf.pack(anchor='w', fill=tk.X, pady=5)
+
+        service_var = tk.StringVar()
+        if service_options:
+            # find the matching service_id in service_options
+            default_option = service_options[0]
+            if service_id:
+                for opt in service_options:
+                    if opt.startswith(f"{service_id}:"):
+                        default_option = opt
+                        break
+            service_var.set(default_option)
+            service_dropdown = tk.OptionMenu(lf, service_var, *service_options)
+            service_dropdown.pack(side=tk.LEFT, padx=(10,5))
+        else:
+            tk.Label(lf, text="No Services Available", fg='red', bg='#ffffff').pack(side=tk.LEFT, padx=(10,5))
+
+        date_entry = tk.Entry(lf, font=('Arial',12), bd=0, highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+        date_entry.pack(side=tk.LEFT, padx=(10,5))
+        if service_date_str:
+            date_entry.insert(0, service_date_str)
+        else:
+            date_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
+
+        line_items.append((service_var, date_entry))
+
+    # prefill line items from invoice
+    for li in invoice.line_items:
+        add_line_item_prefilled(service_id=li.service_id, service_date_str=li.service_date)
+
+    # button to add more line items if needed
+    def add_line_item():
+        add_line_item_prefilled()
+
+    add_line_item_btn = tk.Button(service_frame, text="Add Line Item", command=add_line_item)
+    add_line_item_btn.pack(anchor='w', padx=(10,5), pady=(5,0))
+
+    # notes
+    tk.Label(form_frame, text="Notes", fg='black', bg='#fefefe').pack(anchor='w', padx=(10,5), pady=(20,0))
+    notes_text = tk.Text(form_frame, font=('Arial',12), bd=0, height=5, highlightthickness=2, highlightbackground='#156082', highlightcolor='#1d81af')
+    notes_text.pack(padx=(10,5), pady=(0,10))
+
+    # if there's at least one note, just load the content of the first note
+    if invoice.notes:
+        # assuming first note is main note
+        notes_text.insert("1.0", invoice.notes[0].content)
+
+    def save_edited_invoice():
+        cid = int(selected_customer.get().split(":")[0])
+        due_date = due_date_entry.get().strip()
+        notes_content = notes_text.get("1.0", tk.END).strip()
+
+        parsed_line_items = []
+        for (svc_var, date_e) in line_items:
+            svc_str = svc_var.get()
+            if not svc_str:
+                continue
+            svc_id = int(svc_str.split(":")[0])
+            svc_date = date_e.get().strip()
+            parsed_line_items.append({"service_id": svc_id, "service_date": svc_date})
+
+        if not parsed_line_items:
+            messagebox.showerror("Error", "At least one line item is required.")
+            return
+
+        try:
+            updated_invoice = invoice_service.update_invoice(invoice.id, cid, due_date, parsed_line_items, notes_content)
+            messagebox.showinfo("Success", f"Invoice #{updated_invoice.id} updated successfully!")
+            show_invoices()
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    save_btn = tk.Button(form_frame, text="Update Invoice", command=save_edited_invoice)
+    save_btn.pack(pady=10)
 
 # makes default page
 create_sidebar()
